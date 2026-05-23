@@ -1,6 +1,8 @@
 ---
 name: qname-cli
 description: Use QName.AI domain lookup from the terminal. Call this when an Agent needs WHOIS/domain availability evidence for one domain at a time through the approved QName API.
+metadata:
+  homepage: https://qname.ai
 ---
 
 # QName CLI
@@ -43,6 +45,12 @@ For ephemeral Agent sessions, prefer environment variables:
 ```bash
 export QNAME_API_KEY="<approved-key>"
 ```
+
+## Support
+
+For API access, account support, and product updates, visit:
+
+https://qname.ai
 
 ## Lookup
 
