@@ -1,0 +1,33 @@
+{
+  "name": "@qname/cli",
+  "version": "0.1.1",
+  "description": "Agent-native CLI for QName.AI domain lookup APIs",
+  "homepage": "https://qname.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QNameAI/qname-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/QNameAI/qname-cli/issues"
+  },
+  "type": "module",
+  "bin": {
+    "qname-cli": "bin/qname-cli.mjs"
+  },
+  "files": [
+    "bin",
+    "skills",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "keywords": [
+    "qname",
+    "domain",
+    "whois",
+    "cli",
+    "agent"
+  ]
+}
