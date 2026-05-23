@@ -179,21 +179,51 @@ function ensureApiKey(apiKey) {
   }
 }
 
-function domainFromArgs(args, flags) {
-  const domain = String(flags.domain || args[0] || '')
+function normalizeDomainToken(value) {
+  return String(value || '')
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
     .split(/[/?#]/)[0];
+}
 
-  if (!domain || !domain.includes('.')) {
+function domainsFromArgs(args, flags) {
+  const raw = [];
+  if (flags.domain) raw.push(flags.domain);
+  if (flags.domains) raw.push(flags.domains);
+  raw.push(...args);
+
+  const domains = [];
+  const invalid = [];
+
+  for (const token of raw) {
+    for (const part of String(token).split(/[\s,]+/)) {
+      const domain = normalizeDomainToken(part);
+      if (!domain) continue;
+
+      if (!domain.includes('.')) {
+        invalid.push(part);
+        continue;
+      }
+
+      if (!domains.includes(domain)) domains.push(domain);
+    }
+  }
+
+  if (invalid.length) {
+    throw new CliError(`Invalid domain: ${invalid[0]}`, {
+      code: 'INVALID_DOMAIN',
+    });
+  }
+
+  if (!domains.length) {
     throw new CliError('Enter a valid domain, for example `qname.ai`.', {
       code: 'INVALID_DOMAIN',
     });
   }
 
-  return domain;
+  return domains;
 }
 
 async function readJsonFromStdin() {
@@ -244,19 +274,21 @@ async function commandInit(_args, flags) {
 }
 
 async function commandWhois(args, flags) {
-  const domain = domainFromArgs(args, flags);
+  const domains = domainsFromArgs(args, flags);
   const { baseUrl, apiKey } = await resolveRuntimeConfig(flags);
   ensureApiKey(apiKey);
-  const body = await fetchWhois({ baseUrl, apiKey, domain });
+  const isBatch = domains.length > 1;
+  const body = isBatch
+    ? await fetchWhoisBatch({ baseUrl, apiKey, domains })
+    : await fetchWhois({ baseUrl, apiKey, domain: domains[0] });
 
   if (flags.format === 'text') {
-    const status =
-      body?.result && body?.data
-        ? 'registered'
-        : body?.code === 'DOMAIN_NOT_REGISTERED'
-          ? 'available'
-          : body?.code || 'unknown';
-    print(`${domain}: ${status}`, flags);
+    const lines = isBatch
+      ? (body?.results ?? []).map(
+          (item) => `${item.domain}: ${statusFromBatchItem(item)}`
+        )
+      : [`${domains[0]}: ${statusFromWhoisResponse(body)}`];
+    print(lines.join('\n'), flags);
     return;
   }
 
@@ -264,12 +296,26 @@ async function commandWhois(args, flags) {
     {
       ok: true,
       command: 'whois',
-      domain,
-      endpoint: '/api/whois/{domain}',
+      ...(isBatch ? { domains } : { domain: domains[0] }),
+      endpoint: isBatch ? '/api/whois/batch' : '/api/whois/{domain}',
       data: body,
     },
     flags
   );
+}
+
+function statusFromWhoisResponse(body) {
+  if (body?.result && body?.data) return 'registered';
+  if (body?.code === 'DOMAIN_NOT_REGISTERED') return 'available';
+  if (body?.code === 'DOMAIN_RESERVED') return 'reserved';
+  return body?.code || 'unknown';
+}
+
+function statusFromBatchItem(item) {
+  if (item?.code === 'SUCCESS' && item?.result) return 'registered';
+  if (item?.code === 'DOMAIN_NOT_REGISTERED') return 'available';
+  if (item?.code === 'DOMAIN_RESERVED') return 'reserved';
+  return item?.code || 'unknown';
 }
 
 async function fetchWhois({ baseUrl, apiKey, domain }) {
@@ -288,6 +334,32 @@ async function fetchWhois({ baseUrl, apiKey, domain }) {
     !response.ok &&
     !(response.status === 404 && body?.code === 'DOMAIN_NOT_REGISTERED')
   ) {
+    throw new CliError(body?.error || `QName API returned ${response.status}`, {
+      code: body?.code || 'API_ERROR',
+      status: response.status,
+      details: body,
+    });
+  }
+
+  return body;
+}
+
+async function fetchWhoisBatch({ baseUrl, apiKey, domains }) {
+  const url = new URL('/api/whois/batch', baseUrl);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'user-agent': '@qname/cli',
+      'x-api-key': apiKey,
+    },
+    body: JSON.stringify({ domains }),
+  });
+  const raw = await response.text();
+  const body = raw ? JSON.parse(raw) : null;
+
+  if (!response.ok) {
     throw new CliError(body?.error || `QName API returned ${response.status}`, {
       code: body?.code || 'API_ERROR',
       status: response.status,
@@ -398,8 +470,8 @@ async function commandRequestKey(_args, flags) {
       ok: true,
       command: 'request-key',
       url,
-      scope: 'domain.query.single',
-      note: 'Request approval before using qname-cli with the QName API.',
+      scope: 'domain.query.whois',
+      note: 'Request approval and a per-request domain quota before using qname-cli with the QName API.',
     },
     flags
   );
@@ -421,7 +493,7 @@ async function commandDocs(_args, flags) {
         skill: path.join(packageRoot, 'skills/qname-cli/SKILL.md'),
         requestKey: `${baseUrl}/settings/apikeys`,
       },
-      scope: 'domain.query.single',
+      scope: 'domain.query.whois',
     },
     flags
   );
@@ -446,11 +518,11 @@ async function commandHelp(flags) {
   print(
     `qname-cli ${pkg.version}
 
-Agent-native CLI for QName.AI single-domain lookup.
+Agent-native CLI for QName.AI domain lookup.
 
 Usage:
   qname-cli init --api-key <key> [--base-url https://qname.ai]
-  qname-cli whois qname.ai [--pretty]
+  qname-cli whois qname.ai [example.com ...] [--pretty]
   qname-cli config get
   qname-cli config set --api-key <key>
   qname-cli doctor [--check-api]

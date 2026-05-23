@@ -3,8 +3,9 @@
 Agent-native CLI for QName.AI domain lookup APIs.
 
 The CLI is the recommended client for QName API keys. It intentionally exposes
-only the approved `domain.query.single` scope: one domain per request through
-`GET /api/whois/{domain}`. Batch WHOIS, realtime streams, domain traffic, and
+only the approved `domain.query.whois` scope: WHOIS/domain lookup through
+`GET /api/whois/{domain}` or `POST /api/whois/batch`, capped by the
+per-request quota approved for your key. Realtime streams, domain traffic, and
 domain analysis data are outside this CLI/API scope.
 
 ## Install
@@ -29,6 +30,7 @@ Run a lookup:
 
 ```bash
 qname-cli whois qname.ai --pretty
+qname-cli whois qname.ai example.com --pretty
 ```
 
 For local development inside this repository:
@@ -40,7 +42,7 @@ node bin/qname-cli.mjs --help
 ## Request API Access
 
 1. Open `https://qname.ai/settings/apikeys`.
-2. Submit an API key request for `qname-cli`.
+2. Submit an API key request for `qname-cli` and choose a quota tier.
 3. Wait for admin approval.
 4. Reveal the approved key once and initialize the CLI.
 
@@ -59,6 +61,7 @@ export QNAME_BASE_URL="https://qname.ai"
 
 ```bash
 qname-cli whois qname.ai --pretty
+qname-cli whois qname.ai example.com --pretty
 qname-cli whois qname.ai --format text
 qname-cli config get --pretty
 qname-cli config set --api-key qname_xxx
@@ -84,5 +87,6 @@ Agent instructions are also bundled inside the npm package at:
 qname-cli skill --path
 ```
 
-Agents should prefer `qname-cli whois <domain> --pretty` over direct `curl`
-unless they are debugging the API contract itself.
+Agents should prefer `qname-cli whois <domain...> --pretty` over direct `curl`
+unless they are debugging the API contract itself, and must stay within the
+approved per-request quota for the configured key.
