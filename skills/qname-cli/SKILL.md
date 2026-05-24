@@ -1,6 +1,6 @@
 ---
 name: qname-cli
-description: Use QName.AI domain lookup from the terminal. Call this when an Agent needs WHOIS/domain availability evidence through the approved QName API, staying within the key's per-request quota.
+description: Use QName.AI domain lookup from the terminal. Call this when an Agent needs WHOIS/domain availability evidence through the approved QName API, staying within the key's per-request and daily request quotas.
 metadata:
   homepage: https://qname.ai
 ---
@@ -15,7 +15,7 @@ in a terminal workflow.
 Allowed:
 
 - WHOIS lookup with `qname-cli whois <domain...>`, capped by the approved
-  per-request quota for the configured API key.
+  per-request domain quota and daily request quota for the configured API key.
 - JSON output for Agent parsing.
 - Local config through `qname-cli init` or environment variables.
 
@@ -60,7 +60,7 @@ Use JSON output by default:
 qname-cli whois qname.ai --pretty
 ```
 
-Multiple domains are supported when the approved key quota allows them:
+Multiple domains are supported when the approved per-request quota allows them:
 
 ```bash
 qname-cli whois qname.ai example.com --pretty
@@ -75,6 +75,7 @@ qname-cli whois qname.ai --format text
 ## Agent Guidelines
 
 - Keep each command within the approved per-request domain quota.
+- Keep automation loops within the approved daily request quota.
 - Do not try to use this CLI for realtime streams, traffic data, analysis data,
   or purchase actions.
 - Treat the API key as a secret; do not print it unless the user explicitly

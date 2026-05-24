@@ -5,8 +5,9 @@ Agent-native CLI for QName.AI domain lookup APIs.
 The CLI is the recommended client for QName API keys. It intentionally exposes
 only the approved `domain.query.whois` scope: WHOIS/domain lookup through
 `GET /api/whois/{domain}` or `POST /api/whois/batch`, capped by the
-per-request quota approved for your key. Realtime streams, domain traffic, and
-domain analysis data are outside this CLI/API scope.
+per-request domain quota and daily request quota approved for your key.
+Realtime streams, domain traffic, and domain analysis data are outside this
+CLI/API scope.
 
 ## Install
 
@@ -42,7 +43,8 @@ node bin/qname-cli.mjs --help
 ## Request API Access
 
 1. Open `https://qname.ai/settings/apikeys`.
-2. Submit an API key request for `qname-cli` and choose a quota tier.
+2. Submit an API key request for `qname-cli` and choose the domain and daily
+   request quota tiers.
 3. Wait for admin approval.
 4. Reveal the approved key once and initialize the CLI.
 
@@ -89,4 +91,5 @@ qname-cli skill --path
 
 Agents should prefer `qname-cli whois <domain...> --pretty` over direct `curl`
 unless they are debugging the API contract itself, and must stay within the
-approved per-request quota for the configured key.
+approved per-request domain quota and daily request quota for the configured
+key.
