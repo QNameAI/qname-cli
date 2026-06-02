@@ -1,7 +1,7 @@
 {
   "name": "@qname/cli",
-  "version": "0.1.3",
-  "description": "Agent-native CLI for QName.AI domain lookup APIs",
+  "version": "0.1.4",
+  "description": "Agent-native CLI for QName.AI WHOIS and traffic lookup APIs",
   "homepage": "https://qname.ai",
   "repository": {
     "type": "git",
@@ -27,6 +27,7 @@
     "qname",
     "domain",
     "whois",
+    "traffic",
     "cli",
     "agent"
   ]

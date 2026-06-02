@@ -1,14 +1,14 @@
 ---
 name: qname-cli
-description: Use QName.AI domain lookup from the terminal. Call this when an Agent needs WHOIS/domain availability evidence through the approved QName API, staying within the key's per-request and daily request quotas.
+description: Use QName.AI domain lookup from the terminal. Call this when an Agent needs WHOIS/domain availability or traffic evidence through the approved QName API, staying within the key's approved API types and quotas.
 metadata:
   homepage: https://qname.ai
 ---
 
 # QName CLI
 
-Use `qname-cli` when you need WHOIS/domain availability evidence from QName.AI
-in a terminal workflow.
+Use `qname-cli` when you need WHOIS/domain availability or traffic evidence
+from QName.AI in a terminal workflow.
 
 ## Scope
 
@@ -16,13 +16,15 @@ Allowed:
 
 - WHOIS lookup with `qname-cli whois <domain...>`, capped by the approved
   per-request domain quota and daily request quota for the configured API key.
+- Traffic lookup with `qname-cli traffic <domain>`, capped by the approved
+  `domain.traffic.lookup` API type and daily request quota.
 - JSON output for Agent parsing.
 - Local config through `qname-cli init` or environment variables.
 
 Not allowed through this API/CLI:
 
 - Realtime stream checks.
-- Domain traffic, domain rating, or analysis data.
+- Domain rating or backlink analysis data.
 - Registrar purchase actions.
 
 ## Setup
@@ -72,12 +74,28 @@ If you only need a quick human-readable status:
 qname-cli whois qname.ai --format text
 ```
 
+## Traffic
+
+Use JSON output by default:
+
+```bash
+qname-cli traffic qname.ai --pretty
+```
+
+If you only need a quick human-readable summary:
+
+```bash
+qname-cli traffic qname.ai --format text
+```
+
 ## Agent Guidelines
 
 - Keep each command within the approved per-request domain quota.
 - Keep automation loops within the approved daily request quota.
-- Do not try to use this CLI for realtime streams, traffic data, analysis data,
-  or purchase actions.
+- Use `traffic` only when the configured key is approved for
+  `domain.traffic.lookup`.
+- Do not try to use this CLI for realtime streams, domain rating data, backlink
+  analysis data, or purchase actions.
 - Treat the API key as a secret; do not print it unless the user explicitly
   asks to inspect local config with `--show-secrets`.
 - Prefer `qname-cli doctor` before debugging credentials.

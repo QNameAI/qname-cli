@@ -14,6 +14,7 @@ const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.qname', 'config.json');
 const COMMANDS = new Set([
   'init',
   'whois',
+  'traffic',
   'config',
   'doctor',
   'request-key',
@@ -304,6 +305,40 @@ async function commandWhois(args, flags) {
   );
 }
 
+async function commandTraffic(args, flags) {
+  const domains = domainsFromArgs(args, flags);
+  const { baseUrl, apiKey } = await resolveRuntimeConfig(flags);
+  ensureApiKey(apiKey);
+
+  const results = [];
+  for (const domain of domains) {
+    const data = await fetchTraffic({ baseUrl, apiKey, domain });
+    results.push({ domain, data });
+  }
+
+  if (flags.format === 'text') {
+    print(
+      results
+        .map(({ domain, data }) => `${domain}: ${trafficSummary(data)}`)
+        .join('\n'),
+      flags
+    );
+    return;
+  }
+
+  print(
+    {
+      ok: true,
+      command: 'traffic',
+      ...(results.length === 1
+        ? { domain: results[0].domain, data: results[0].data }
+        : { domains, results }),
+      endpoint: '/api/domain-traffic?domain={domain}',
+    },
+    flags
+  );
+}
+
 function statusFromWhoisResponse(body) {
   if (body?.result && body?.data) return 'registered';
   if (body?.code === 'DOMAIN_NOT_REGISTERED') return 'available';
@@ -355,6 +390,45 @@ async function fetchWhoisBatch({ baseUrl, apiKey, domains }) {
       'x-api-key': apiKey,
     },
     body: JSON.stringify({ domains }),
+  });
+  const raw = await response.text();
+  const body = raw ? JSON.parse(raw) : null;
+
+  if (!response.ok) {
+    throw new CliError(body?.error || `QName API returned ${response.status}`, {
+      code: body?.code || 'API_ERROR',
+      status: response.status,
+      details: body,
+    });
+  }
+
+  return body;
+}
+
+function trafficSummary(body) {
+  const visits = body?.engagements?.visits
+    ? `${body.engagements.visits} visits`
+    : 'visits unknown';
+  const globalRank = body?.globalRank?.rank
+    ? `global rank ${body.globalRank.rank}`
+    : 'global rank unknown';
+  const countryRank =
+    body?.countryRank?.countryCode && body?.countryRank?.rank
+      ? `${body.countryRank.countryCode} rank ${body.countryRank.rank}`
+      : 'country rank unknown';
+
+  return `${visits}, ${globalRank}, ${countryRank}`;
+}
+
+async function fetchTraffic({ baseUrl, apiKey, domain }) {
+  const url = new URL('/api/domain-traffic', baseUrl);
+  url.searchParams.set('domain', domain);
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'user-agent': '@qname/cli',
+      'x-api-key': apiKey,
+    },
   });
   const raw = await response.text();
   const body = raw ? JSON.parse(raw) : null;
@@ -470,8 +544,12 @@ async function commandRequestKey(_args, flags) {
       ok: true,
       command: 'request-key',
       url,
-      scope: 'domain.query.whois',
-      note: 'Request approval and a per-request domain quota before using qname-cli with the QName API.',
+      scopes: [
+        'domain.query.whois.single',
+        'domain.query.whois.batch',
+        'domain.traffic.lookup',
+      ],
+      note: 'Request approval and the API types you need before using qname-cli with the QName API.',
     },
     flags
   );
@@ -493,7 +571,11 @@ async function commandDocs(_args, flags) {
         skill: path.join(packageRoot, 'skills/qname-cli/SKILL.md'),
         requestKey: `${baseUrl}/settings/apikeys`,
       },
-      scope: 'domain.query.whois',
+      scopes: [
+        'domain.query.whois.single',
+        'domain.query.whois.batch',
+        'domain.traffic.lookup',
+      ],
     },
     flags
   );
@@ -518,11 +600,12 @@ async function commandHelp(flags) {
   print(
     `qname-cli ${pkg.version}
 
-Agent-native CLI for QName.AI domain lookup.
+Agent-native CLI for QName.AI WHOIS and traffic lookup.
 
 Usage:
   qname-cli init --api-key <key> [--base-url https://qname.ai]
   qname-cli whois qname.ai [example.com ...] [--pretty]
+  qname-cli traffic qname.ai [example.com ...] [--pretty]
   qname-cli config get
   qname-cli config set --api-key <key>
   qname-cli doctor [--check-api]
@@ -555,6 +638,7 @@ async function main() {
 
   if (command === 'init') return commandInit(args, flags);
   if (command === 'whois') return commandWhois(args, flags);
+  if (command === 'traffic') return commandTraffic(args, flags);
   if (command === 'config') return commandConfig(args, flags);
   if (command === 'doctor') return commandDoctor(args, flags);
   if (command === 'request-key') return commandRequestKey(args, flags);
