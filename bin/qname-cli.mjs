@@ -15,6 +15,9 @@ const COMMANDS = new Set([
   'init',
   'whois',
   'traffic',
+  'keywords',
+  'keyword',
+  'keyword-research',
   'config',
   'doctor',
   'request-key',
@@ -227,6 +230,82 @@ function domainsFromArgs(args, flags) {
   return domains;
 }
 
+function keywordQueryFromArgs(args, flags) {
+  const website = String(flags.website || '').trim();
+  const rawKeywords = [...args];
+  if (flags.keyword) rawKeywords.push(flags.keyword);
+  if (flags.keywords) {
+    rawKeywords.push(...String(flags.keywords).split(/[\n,]+/));
+  }
+
+  const keywords = [];
+  for (const value of rawKeywords) {
+    const keyword = String(value).trim();
+    if (!keyword) continue;
+    if (keyword.length > 80) {
+      throw new CliError('Each keyword must be 80 characters or fewer.', {
+        code: 'INVALID_KEYWORD',
+      });
+    }
+    if (
+      !keywords.some((item) => item.toLowerCase() === keyword.toLowerCase())
+    ) {
+      keywords.push(keyword);
+    }
+  }
+
+  if (website && keywords.length) {
+    throw new CliError('Use keywords or --website, not both.', {
+      code: 'INVALID_KEYWORD_QUERY',
+    });
+  }
+  if (!website && !keywords.length) {
+    throw new CliError(
+      'Enter 1–10 quoted keywords or use --website example.com.',
+      { code: 'INVALID_KEYWORD_QUERY' }
+    );
+  }
+  if (keywords.length > 10) {
+    throw new CliError('Enter no more than 10 keywords.', {
+      code: 'INVALID_KEYWORD_QUERY',
+    });
+  }
+
+  const pageSize = Number(flags['page-size'] || 100);
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    throw new CliError('--page-size must be an integer from 1 to 100.', {
+      code: 'INVALID_PAGE_SIZE',
+    });
+  }
+
+  const networkAliases = {
+    google: 'GOOGLE_SEARCH',
+    search: 'GOOGLE_SEARCH',
+    partners: 'GOOGLE_SEARCH_AND_PARTNERS',
+    'google-and-partners': 'GOOGLE_SEARCH_AND_PARTNERS',
+  };
+  const networkInput = String(flags.network || 'GOOGLE_SEARCH');
+  const network =
+    networkAliases[networkInput.toLowerCase()] || networkInput.toUpperCase();
+  if (!['GOOGLE_SEARCH', 'GOOGLE_SEARCH_AND_PARTNERS'].includes(network)) {
+    throw new CliError(
+      '--network must be google, partners, GOOGLE_SEARCH, or GOOGLE_SEARCH_AND_PARTNERS.',
+      { code: 'INVALID_NETWORK' }
+    );
+  }
+
+  return {
+    mode: website ? 'website' : 'keywords',
+    keywords: website ? [] : keywords,
+    ...(website ? { website } : {}),
+    country: String(flags.country || '2840'),
+    language: String(flags.language || '1000'),
+    network,
+    pageSize,
+    ...(flags['page-token'] ? { pageToken: String(flags['page-token']) } : {}),
+  };
+}
+
 async function readJsonFromStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) {
@@ -245,7 +324,7 @@ async function commandInit(_args, flags) {
   );
   const apiKey =
     String(flags['api-key'] || inputConfig.apiKey || '').trim() ||
-    (await promptSecret('QName API key'));
+    (await promptSecret('QName AI API key'));
 
   if (!apiKey) {
     throw new CliError('API key is required.', {
@@ -339,6 +418,44 @@ async function commandTraffic(args, flags) {
   );
 }
 
+async function commandKeywords(args, flags) {
+  const query = keywordQueryFromArgs(args, flags);
+  const { baseUrl, apiKey } = await resolveRuntimeConfig(flags);
+  ensureApiKey(apiKey);
+  const data = await fetchKeywordResearch({ baseUrl, apiKey, query });
+
+  if (flags.format === 'text') {
+    const heading = [
+      'keyword',
+      'avg_monthly_searches',
+      'competition',
+      'low_top_of_page_bid',
+      'high_top_of_page_bid',
+    ].join('\t');
+    const rows = (data?.results ?? []).map((item) =>
+      [
+        item.text,
+        item.avgMonthlySearches ?? '',
+        item.competition ?? 'UNKNOWN',
+        item.lowTopOfPageBid ?? '',
+        item.highTopOfPageBid ?? '',
+      ].join('\t')
+    );
+    print([heading, ...rows].join('\n'), flags);
+    return;
+  }
+
+  print(
+    {
+      ok: true,
+      command: 'keywords',
+      endpoint: '/api/keywords/research',
+      data,
+    },
+    flags
+  );
+}
+
 function statusFromWhoisResponse(body) {
   if (body?.result && body?.data) return 'registered';
   if (body?.code === 'DOMAIN_NOT_REGISTERED') return 'available';
@@ -369,11 +486,14 @@ async function fetchWhois({ baseUrl, apiKey, domain }) {
     !response.ok &&
     !(response.status === 404 && body?.code === 'DOMAIN_NOT_REGISTERED')
   ) {
-    throw new CliError(body?.error || `QName API returned ${response.status}`, {
-      code: body?.code || 'API_ERROR',
-      status: response.status,
-      details: body,
-    });
+    throw new CliError(
+      body?.error || `QName AI API returned ${response.status}`,
+      {
+        code: body?.code || 'API_ERROR',
+        status: response.status,
+        details: body,
+      }
+    );
   }
 
   return body;
@@ -395,11 +515,14 @@ async function fetchWhoisBatch({ baseUrl, apiKey, domains }) {
   const body = raw ? JSON.parse(raw) : null;
 
   if (!response.ok) {
-    throw new CliError(body?.error || `QName API returned ${response.status}`, {
-      code: body?.code || 'API_ERROR',
-      status: response.status,
-      details: body,
-    });
+    throw new CliError(
+      body?.error || `QName AI API returned ${response.status}`,
+      {
+        code: body?.code || 'API_ERROR',
+        status: response.status,
+        details: body,
+      }
+    );
   }
 
   return body;
@@ -434,11 +557,54 @@ async function fetchTraffic({ baseUrl, apiKey, domain }) {
   const body = raw ? JSON.parse(raw) : null;
 
   if (!response.ok) {
-    throw new CliError(body?.error || `QName API returned ${response.status}`, {
-      code: body?.code || 'API_ERROR',
-      status: response.status,
-      details: body,
-    });
+    throw new CliError(
+      body?.error || `QName AI API returned ${response.status}`,
+      {
+        code: body?.code || 'API_ERROR',
+        status: response.status,
+        details: body,
+      }
+    );
+  }
+
+  return body;
+}
+
+async function fetchKeywordResearch({ baseUrl, apiKey, query }) {
+  const url = new URL('/api/keywords/research', baseUrl);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'user-agent': '@qname/cli',
+      'x-api-key': apiKey,
+    },
+    body: JSON.stringify(query),
+  });
+  const raw = await response.text();
+  let body = null;
+  try {
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    throw new CliError(
+      `QName AI API returned invalid JSON (${response.status})`,
+      {
+        code: 'INVALID_API_RESPONSE',
+        status: response.status,
+      }
+    );
+  }
+
+  if (!response.ok) {
+    throw new CliError(
+      body?.error || `QName AI API returned ${response.status}`,
+      {
+        code: body?.code || 'API_ERROR',
+        status: response.status,
+        details: body,
+      }
+    );
   }
 
   return body;
@@ -548,8 +714,9 @@ async function commandRequestKey(_args, flags) {
         'domain.query.whois.single',
         'domain.query.whois.batch',
         'domain.traffic.lookup',
+        'keyword.research',
       ],
-      note: 'Request approval and the API types you need before using qname-cli with the QName API.',
+      note: 'Request approval and the API types you need before using qname-cli with the QName AI API.',
     },
     flags
   );
@@ -575,6 +742,7 @@ async function commandDocs(_args, flags) {
         'domain.query.whois.single',
         'domain.query.whois.batch',
         'domain.traffic.lookup',
+        'keyword.research',
       ],
     },
     flags
@@ -600,12 +768,14 @@ async function commandHelp(flags) {
   print(
     `qname-cli ${pkg.version}
 
-Agent-native CLI for QName.AI WHOIS and traffic lookup.
+Agent-native CLI for QName AI WHOIS, traffic, and Google keyword research.
 
 Usage:
   qname-cli init --api-key <key> [--base-url https://qname.ai]
   qname-cli whois qname.ai [example.com ...] [--pretty]
   qname-cli traffic qname.ai [example.com ...] [--pretty]
+  qname-cli keywords "ai video generator" ["text to video" ...] [--pretty]
+  qname-cli keywords --website example.com [--pretty]
   qname-cli config get
   qname-cli config set --api-key <key>
   qname-cli doctor [--check-api]
@@ -613,7 +783,7 @@ Usage:
   qname-cli skill [--path]
 
 Environment:
-  QNAME_API_KEY       API key issued from QName.AI settings
+  QNAME_API_KEY       API key issued from QName AI settings
   QNAME_BASE_URL      API base URL, default https://qname.ai
   QNAME_CLI_CONFIG    Config path, default ~/.qname/config.json
 `,
@@ -639,6 +809,12 @@ async function main() {
   if (command === 'init') return commandInit(args, flags);
   if (command === 'whois') return commandWhois(args, flags);
   if (command === 'traffic') return commandTraffic(args, flags);
+  if (
+    command === 'keywords' ||
+    command === 'keyword' ||
+    command === 'keyword-research'
+  )
+    return commandKeywords(args, flags);
   if (command === 'config') return commandConfig(args, flags);
   if (command === 'doctor') return commandDoctor(args, flags);
   if (command === 'request-key') return commandRequestKey(args, flags);

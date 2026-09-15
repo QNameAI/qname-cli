@@ -1,7 +1,7 @@
 {
   "name": "@qname/cli",
-  "version": "0.1.4",
-  "description": "Agent-native CLI for QName.AI WHOIS and traffic lookup APIs",
+  "version": "0.2.0",
+  "description": "Agent-native CLI for QName AI WHOIS, traffic, and Google keyword research APIs",
   "homepage": "https://qname.ai",
   "repository": {
     "type": "git",
@@ -13,6 +13,9 @@
   "type": "module",
   "bin": {
     "qname-cli": "bin/qname-cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
   },
   "files": [
     "bin",
@@ -28,6 +31,8 @@
     "domain",
     "whois",
     "traffic",
+    "keyword-research",
+    "google-ads",
     "cli",
     "agent"
   ]
